@@ -30,22 +30,26 @@ U-Boot will need development libraries when compiling with verification enabled.
 
 
 # 2. Obtain the software
+### ARM Trusted Firmware
+Obtain the latest version of ARM Trusted Firmware by issue:
+```
+git clone https://github.com/ARM-software/arm-trusted-firmware.git
+```
+
 ### RAM-disk / initrd
 Obtain the RAM-disk by following the [ARM Trusted Firmware User Guide](https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/user-guide.md#prepare-ram-disk) (section: Prepare RAM-disk).
 
 ### Linux kernel
 Obtain the Linux kernel by following the [ARM Trusted Firmware User
-Guide](https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/user-guide.md#obtaining-a-linux-kernel) (section: Obtaining a Linux kernel).
-
-### Arm Trusted Firmware
-FIXME: Nothing to do here? Why state it?
+Guide](https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/user-guide.md#obtaining-a-linux-kernel) (the first section called 1. Clone Linux:).
 
 ### U-Boot
-The latest version of U-Boot can be downloaded from [U-Boots](http://www.denx.de/wiki/U-Boot/SourceCode) site, or by cloning it from here ```git clone git://git.denx.de/u-boot.git```.
-
-
-# Prepare the software
-### 1) Build U-boot
+The latest version of U-Boot can be downloaded from [U-Boots](http://www.denx.de/wiki/U-Boot/SourceCode) site, or by cloning it from here:
+```
+git clone git://git.denx.de/u-boot.git
+```
+# 3. Prepare the software
+### Build U-boot
 Since we will run this using FVP we must configue U-Boot for the target board that is vexpress_aemv8a. Compile U-Boot as below.
 
 FIXME: Needed? -> ```vexpress_aemv8a_semi_config``` can be selected when you run on FVP platform. Modify the macro ```CONFIG_SYS_TEXT_BASE``` which is located in the file ```include/configs/vexpress_aemv8a.h```. BL31 will jump to address ```0x88000000```, ```CONFIG_SYS_TEXT_BASE``` should be modified to this value.
@@ -73,14 +77,14 @@ If you haven't build the kernel for ARCH64, the please do as follows:
 When the kernel image has been created we need to create images for use with the U-Boot boot loader, this is achieved by:
 ```
     $ cd <linux_kernel_path>/arch/arm64/boot
-    $ /<uboot_path>/tools/mkimage -A arm64 -O linux -T kernel \
+    $ <u-boot_path>/tools/mkimage -A arm64 -O linux -T kernel \
         -C none -a 0x80080000 -e 0x80080000  -n 'linux-3.15' \
         -d Image uImage
 ```
     
-Both load address and link address will and should be ```0x80080000```.
+Both load address and link address will and should be ```0x80080000```. The -n parameter could be any name, for simplicity we use the same name as for the version of the kernel we are using.
 
-### 3) Make the firmware image package (fip)
+### Make the firmware image package (fip)
 Next step is to build the firmware package in ARM-Trusted-Firmware Git. We need to build:
 
 * bl1.bin
@@ -93,22 +97,23 @@ This could be achieved by typing following
     $ export BL33=<u-boot_path>/u-boot.bin  
     $ export CROSS_COMPILE=<toolchain_path>/bin/aarch64-none-elf-
     $ cd <arm_tf_path>
-    $ make PLAT=fvp all
+    $ make PLAT=fvp all fip
 ```
 
-### 4) Running the system
+### 4. Run the system in FVP
 Start by copying all of the images to the FVP directoy (FIXME: symlink probably better)
 ```
     $ cd <fvp_path>
     $ cp <arm_tf_path>/build/fvp/release/bl*.bin .
-    $ cp <arm_tf_path>/FIP ... FIXME
+    $ cp <arm_tf_path>/build/fvp/release/fip.bin .
+    $ cp <arm_tf_path>/fdts/fvp-foundation-gicv3-psci.dtb fdt.dtb
     $ cp <u-boot_path>/u-boot.bin .
     $ cp <linux_kernel_path>/arch/arm64/boot/uImage
 ```
 
 Starting Foundation as below:
 ```
-$ /<path_to_fvp>/Foundation_v8 \
+$ /<fvp_path>/models/Linux64_GCC-4.1/Foundation_v8 \
         --cores=4 \
         --no-secure-memory \
         --visualization \
@@ -116,7 +121,7 @@ $ /<path_to_fvp>/Foundation_v8 \
         --data=bl1.bin@0x0 \
         --data=fip.bin@0x8000000 \
         --data=uImage@0x90000000 \
-        --data=ramdisk_file@0xa1000000 \
+        --data=filesystem.cpio.gz@0xa1000000 \
         --data=fdt.dtb@0xa0000000
 ```
 PS: --data command can be used to load the image into FVP’s memory
@@ -129,7 +134,7 @@ Next, boot the kernel and once the firmware has successfully been started, the s
 
 ### 5) Verified U-Boot
 + Since we have verified this using Foundation Models, we chosen the vexpress_aemv8a as the target board for U-Boot.
-Edit ```vexpress_aemv8a.h``` file, add macros as below:
+Edit ```./include/configs/vexpress_aemv8a.h``` file, add macros as below:
 ```
     #define CONFIG_OF_CONTROL
     #define CONFIG_RSA
@@ -252,4 +257,4 @@ After loaded images are verified, Use bootm command to boot kernel as :
 ```
     $ bootm 0xB0000004
 ```
-PS: There are some problems in he latest version of U-Boot (v2014.10). You may need to rollback ```gic_v64.S``` file as the older version when you open ```CONFIG_GICV2``` macro. Although we have reported the problem to U-Boot's maintainer, we still recommend you to use the older version of U-Boot if you want to verify this using Foundation Model. As an alternative you could substitute the file ```gic_v64.S``` with the older version and add the ```CONFIG_GICV2``` macro in ```vexpress_aemv8a.h```.
+PS: There are some problems in he latest version of U-Boot (v2014.10). You may need to rollback ```gic_v64.S``` file as the older version when you open ```CONFIG_GICV2``` macro. Although we have reported the problem to U-Boot's maintainer, we still recommend you to use the older version of U-Boot if you want to verify this using Foundation Model. As an alternative you could substitute the file ```gic_v64.S``` with the older version and add the ```#define CONFIG_GICV2``` macro in ```./include/configs/vexpress_aemv8a.h```.
