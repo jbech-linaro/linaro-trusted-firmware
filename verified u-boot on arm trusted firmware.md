@@ -1,55 +1,112 @@
-# Tools
-1. FVP : Foundation_v8p. The simulator used to test. It can be downloaded from
+How to run ARM-Trusted-Firmware and U-Boot with verification enabled
+--------------------------------------------------------------------
+Contents:
+
+1. Prerequisites
+2. Obtain the software
+3. Prepare the software
+4. Run the system in FVP
+
+# 1. Prerequisites
+### Desktop
+As hosting enviroment this has been tested using:
+
+* Ubuntu 12.04.04
+* Linux Mint 17
+
+### FVP (Foundation_v8p)
+This is the simulator used in this setup. It can be downloaded from 
 [ARMs](http://www.arm.com/zh/products/tools/models/fast-models/foundation-model.php) site.
-2. Linux server: Host working environment, we have verified this using Ubuntu 12.04.04 and Linux Mint 17.
-3. Cross compiler: [gcc-linaro-aarch64-none-elf-4.8-2013.11_linux.tar.xz](http://releases.linaro.org/13.11/components/toolchain/binaries/gcc-linaro-aarch64-none-elf-4.8-2013.11_linux.tar.xz)
-4. FIXME: We need to pre-install OpenSSL packages also, which packages? For me it was enough with ```sudo apt-get install libssl-dev```.
 
-# Prepare Software
-1. RAM-disk initrd: Test version can be downloaded from Linaro, Details can be found in ARM-Trusted-Firmware's [User Guide](https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/user-guide.md). FIXME: Where? Initrd isn't stated there.
+### Toolchain
+We recommend that you follow the
+[ARM Trusted Firmware User
+Guide](https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/user-guide.md#3--tools)
+ (section: Tools) to get and setup the correct toolchain.
 
-2. Linux kernel. FIXME: Nothing to do here? Why state it?
+### OpenSSL
+U-Boot will need development libraries when compiling with verification enabled. On a Ubuntu based system you will get this package by typing:
+```sudo apt-get install libssl-dev```.
 
-3. Arm Trusted Firmware. FIXME: Nothing to do here? Why state it?
 
-4. U-Boot: Universal boot loader
-The latest version of U-Boot can be downloaded from [U-Boots](http://www.denx.de/wiki/U-Boot/SourceCode) site, or by cloning it from here ```git clone git://git.denx.de/u-boot.git```
+# 2. Obtain the software
+### RAM-disk / initrd
+Obtain the RAM-disk by following the [ARM Trusted Firmware User Guide](https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/user-guide.md#prepare-ram-disk) (section: Prepare RAM-disk).
 
-# Boot system
+### Linux kernel
+Obtain the Linux kernel by following the [ARM Trusted Firmware User
+Guide](https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/user-guide.md#obtaining-a-linux-kernel) (section: Obtaining a Linux kernel).
 
+### Arm Trusted Firmware
+FIXME: Nothing to do here? Why state it?
+
+### U-Boot
+The latest version of U-Boot can be downloaded from [U-Boots](http://www.denx.de/wiki/U-Boot/SourceCode) site, or by cloning it from here ```git clone git://git.denx.de/u-boot.git```.
+
+
+# Prepare the software
 ### 1) Build U-boot
-We are going to run the system on Foundation Models, therefore out target board will be vexpress_aemv8a. ```vexpress_aemv8a_semi_config``` can be selected when you run on FVP platform. Modify the macro ```CONFIG_SYS_TEXT_BASE``` which is located in the file ```include/configs/vexpress_aemv8a.h```. BL31 will jump to address ```0x88000000```, ```CONFIG_SYS_TEXT_BASE``` should be modified to this value. FIXME: It is already this value when building with value CONFIG_BASE_FVP.
+Since we will run this using FVP we must configue U-Boot for the target board that is vexpress_aemv8a. Compile U-Boot as below.
 
-Compile U-Boot as below:
+FIXME: Needed? -> ```vexpress_aemv8a_semi_config``` can be selected when you run on FVP platform. Modify the macro ```CONFIG_SYS_TEXT_BASE``` which is located in the file ```include/configs/vexpress_aemv8a.h```. BL31 will jump to address ```0x88000000```, ```CONFIG_SYS_TEXT_BASE``` should be modified to this value.
+
 ```
-    $ cd uboot
-    $ make CROSS_COMPILE=<path>/bin/aarch64-none-elf- distclean
+    $ cd u-boot
+    $ export CROSS_COMPILE=<toolchain_path>/bin/aarch64-none-elf-
+    $ make distclean
     
+    # In the latest version you should use vexpress_aemv8a_defconfig
     $ make vexpress_aemv8a_config
-    # The latest version you should use vexpress_aemv8a_defconfig
-
-    $ make CROSS_COMPILE=<path>/bin/aarch64-none-elf- all
+    $ make all
 ```
 
-### 2) Make uImage
-Supposed that Linux image has created. FIXME: How to we create the Linux image?
+### Build Linux kernel and create uImage
+If you haven't build the kernel for ARCH64, the please do as follows:
+```
+    $ export CROSS_COMPILE=<toolchain_path>/bin/aarch64-none-elf-
+    $ cd <linux_kernel_path>
+    $ make mrproper
+    $ make ARCH=arm64 defconfig
+    $ make -j6 ARCH=arm64
+```
+
+When the kernel image has been created we need to create images for use with the U-Boot boot loader, this is achieved by:
 ```
     $ cd <linux_kernel_path>/arch/arm64/boot
-    $ /<uboot_path>/tools/mkimage -A arm64 -O linux -T kernel -C none -a 0x80080000 -e 0x80080000  -n 'linux-3.15' -d Image uImage
+    $ /<uboot_path>/tools/mkimage -A arm64 -O linux -T kernel \
+        -C none -a 0x80080000 -e 0x80080000  -n 'linux-3.15' \
+        -d Image uImage
 ```
     
 Both load address and link address will and should be ```0x80080000```.
 
-### 3) Make Firmware Package (fip)
-Firmware package includes: ```bl1.bin/ bl2.bin/ bl31.bin/ bl33.bin (uboot.bin)```. Set the variable BL33 as ```<path_to_uboot_directory>/uboot.bin```
+### 3) Make the firmware image package (fip)
+Next step is to build the firmware package in ARM-Trusted-Firmware Git. We need to build:
+
+* bl1.bin
+* bl2.bin
+* bl31.bin
+* bl33.bin (which in this case should be/is u-boot.bin)
+
+This could be achieved by typing following
 ```
-    $ cd <firmware_path>
-    $ make CROSS_COMPILE=<path>/bin/aarch64-none-elf- PLAT=fvp BL33=<path_to_uboot_directory>/uboot.bin all fip.bin
+    $ export BL33=<u-boot_path>/u-boot.bin  
+    $ export CROSS_COMPILE=<toolchain_path>/bin/aarch64-none-elf-
+    $ cd <arm_tf_path>
+    $ make PLAT=fvp all
 ```
 
 ### 4) Running the system
-+ Copy all images including ```bl1.bin, fip.bin, uImage, ramdisk, fdt blob``` to the work directory, then enter.
-+ Starting Foundation as below:
+Start by copying all of the images to the FVP directoy (FIXME: symlink probably better)
+```
+    $ cd <fvp_path>
+    $ cp <arm_tf_path>/build/fvp/release/bl*.bin .
+    $ cp <arm_tf_path>/FIP ... FIXME
+    $ cp <u-boot_path>/u-boot.bin .
+    $ cp <linux_kernel_path>/arch/arm64/boot/uImage
+```
+
+Starting Foundation as below:
 ```
 $ /<path_to_fvp>/Foundation_v8 \
         --cores=4 \
