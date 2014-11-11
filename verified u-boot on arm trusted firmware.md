@@ -6,6 +6,7 @@ Contents:
 2. Obtain the software
 3. Prepare the software
 4. Run the system in FVP
+5. Verified U-Boot
 
 # 1. Prerequisites
 ### Desktop
@@ -52,7 +53,7 @@ git clone git://git.denx.de/u-boot.git
 ### Build U-boot
 Since we will run this using FVP we must configue U-Boot for the target board that is vexpress_aemv8a. Compile U-Boot as below.
 
-FIXME: Needed? -> ```vexpress_aemv8a_semi_config``` can be selected when you run on FVP platform. Modify the macro ```CONFIG_SYS_TEXT_BASE``` which is located in the file ```include/configs/vexpress_aemv8a.h```. BL31 will jump to address ```0x88000000```, ```CONFIG_SYS_TEXT_BASE``` should be modified to this value.
+FIXME: Needed? -> ```vexpress_aemv8a_semi_config``` can be selected when you run on FVP platform. Modify the macro ```CONFIG_SYS_TEXT_BASE``` which is located in the file ```./include/configs/vexpress_aemv8a.h```. BL31 will jump to address ```0x88000000```, ```CONFIG_SYS_TEXT_BASE``` should be modified to this value.
 
 ```
     $ cd u-boot
@@ -132,8 +133,8 @@ Next, boot the kernel and once the firmware has successfully been started, the s
 ```
 ```0x90000000``` is the kernel’s address and ```0xa0000000``` is device tree DTB address. ```0xa1000000``` is the ramdisk’s address, also as a final step we need to provide the size for the ramdisk.
 
-### 5) Verified U-Boot
-+ Since we have verified this using Foundation Models, we chosen the vexpress_aemv8a as the target board for U-Boot.
+# 5. Verified U-Boot
++ Since we have verified this using Foundation Models, we have been using the vexpress_aemv8a as the target board for U-Boot.
 Edit ```./include/configs/vexpress_aemv8a.h``` file, add macros as below:
 ```
     #define CONFIG_OF_CONTROL
@@ -143,7 +144,11 @@ Edit ```./include/configs/vexpress_aemv8a.h``` file, add macros as below:
     #define CONFIG_OF_SEPARATE
 ```
 Recompile again. It might happen that it will fail compiling due to lack of a gpio.h file. The reason for this is because of U-Boot's dependency design.
-We need to add a empty gpio.h file to the path ```arch\arm\include\asm\arch-armv8```, just like other boards. FIXME: Didn't solve the problem.
+We need to add a empty gpio.h file to the path ```./arch/arm/include/asm/arch-armv8```, just like other boards, do like this:
+```
+mkdir -p ./arch/arm/include/asm/arch-armv8
+touch ./arch/arm/include/asm/arch-armv8/gpio.h
+```
 
 + Generate RSA Key pairs with OpenSSL
 ```
