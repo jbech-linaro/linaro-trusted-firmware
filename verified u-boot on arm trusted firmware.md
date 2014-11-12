@@ -109,14 +109,16 @@ This could be achieved by typing following
 ```
 
 ### 4. Run the system in FVP
-Start by copying all of the images to the FVP directoy (FIXME: symlink probably better)
+Start by creating symlinks to all of the images to the FVP directoy.
 ```
     $ cd <fvp_path>
-    $ cp <arm_tf_path>/build/fvp/release/bl*.bin .
-    $ cp <arm_tf_path>/build/fvp/release/fip.bin .
-    $ cp <arm_tf_path>/fdts/fvp-foundation-gicv2-psci.dtb fdt.dtb
-    $ cp <u-boot_path>/u-boot.bin .
-    $ cp <linux_kernel_path>/arch/arm64/boot/uImage
+    $ ln -s <arm_tf_path>/build/fvp/release/bl1.bin .
+    $ ln -s <arm_tf_path>/build/fvp/release/bl2.bin .
+    $ ln -s <arm_tf_path>/build/fvp/release/bl31.bin .
+    $ ln -s <arm_tf_path>/build/fvp/release/fip.bin .
+    $ ln -s <arm_tf_path>/fdts/fvp-foundation-gicv2-psci.dtb fdt.dtb
+    $ ln -s <u-boot_path>/u-boot.bin .
+    $ ln -s <linux_kernel_path>/arch/arm64/boot/uImage .
 ```
 
 Starting Foundation as below:
@@ -132,13 +134,13 @@ $ /<fvp_path>/models/Linux64_GCC-4.1/Foundation_v8 \
         --data=filesystem.cpio.gz@0xa1000000 \
         --data=fdt.dtb@0xa0000000
 ```
-PS: --data command can be used to load the image into FVP’s memory
-Next, boot the kernel and once the firmware has successfully been started, the system will stop at U-Boot’s shell.
+PS: --data command can be used to load the image into FVP's memory
+Next, boot the kernel and once the firmware has successfully been started, the system will stop at U-Boot's shell.
 + We can use U-boots ```bootm``` command to start Linux kernel as below:
 ```
     $ bootm 0x90000000 0xa1000000:size 0xa0000000
 ```
-```0x90000000``` is the kernel’s address and ```0xa0000000``` is device tree DTB address. ```0xa1000000``` is the ramdisk’s address, also as a final step we need to provide the size for the ramdisk.
+```0x90000000``` is the kernel's address and ```0xa0000000``` is device tree DTB address. ```0xa1000000``` is the ramdisk's address, also as a final step we need to provide the size for the ramdisk.
 
 # 5. Verified U-Boot
 1. Since we have verified this using Foundation Models, we have been using the vexpress_aemv8a as the target board for U-Boot.
@@ -230,6 +232,7 @@ Verified boot is based on the new U-Boot image format called FIT, so we need to 
 　　};
 };
 ```
+
 Pay attention to section ```key-name-hint```, this points to the path of key  generated in our steps using OpenSSL above. Before we build the FIT image the kernel image, FDT blob and the ramdisk must be prepared. How to configure depends on the board you plan to use. You need to select load- and entry-address for each sub image. Build the FIT image and sign the DTB file for U-Boot as below:
 ```
     $ cp fvp-psci-gicv2.dtb atf_psci_public.dtb  
@@ -262,7 +265,7 @@ $ /<path_to_fvp>/Foundation_v8 \
         --data=image.fit@0xa2000004
 ```
 
-Note: There exist an alignment problem in U-Boot’s mkimage, we have debugged the source code and found that sometimes you may encounter this problem. To avoid this problem, modify the address that FIT image be loaded.
+Note: There exist an alignment problem in U-Boot's mkimage, we have debugged the source code and found that sometimes you may encounter this problem. To avoid this problem, modify the address that FIT image be loaded.
 I.e, load ```image.fit``` to ```0xa2000004``` and it should be OK, however, when I load it to ```0xB0000000``` there will be a abortion exception. This problem is mainly related to mkimage tools and FIT format image parsing routines.
 
 After loaded images are verified, Use bootm command to boot kernel as :  
