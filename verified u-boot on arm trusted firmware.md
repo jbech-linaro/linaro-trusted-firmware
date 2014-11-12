@@ -27,8 +27,15 @@ Guide](https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/use
 
 ### OpenSSL
 U-Boot will need development libraries when compiling with verification enabled. On a Ubuntu based system you will get this package by typing:
-```sudo apt-get install libssl-dev```.
+```
+sudo apt-get install libssl-dev
+```
 
+### Device Tree Compiler
+When enabling verified boot you are going to build device tree files, therefore you also must install the device tree compiler.
+```
+sudo apt-get install device-tree-compiler
+```
 
 # 2. Obtain the software
 ### ARM Trusted Firmware
@@ -107,7 +114,7 @@ Start by copying all of the images to the FVP directoy (FIXME: symlink probably 
     $ cd <fvp_path>
     $ cp <arm_tf_path>/build/fvp/release/bl*.bin .
     $ cp <arm_tf_path>/build/fvp/release/fip.bin .
-    $ cp <arm_tf_path>/fdts/fvp-foundation-gicv3-psci.dtb fdt.dtb
+    $ cp <arm_tf_path>/fdts/fvp-foundation-gicv2-psci.dtb fdt.dtb
     $ cp <u-boot_path>/u-boot.bin .
     $ cp <linux_kernel_path>/arch/arm64/boot/uImage
 ```
@@ -134,7 +141,7 @@ Next, boot the kernel and once the firmware has successfully been started, the s
 ```0x90000000``` is the kernel’s address and ```0xa0000000``` is device tree DTB address. ```0xa1000000``` is the ramdisk’s address, also as a final step we need to provide the size for the ramdisk.
 
 # 5. Verified U-Boot
-+ Since we have verified this using Foundation Models, we have been using the vexpress_aemv8a as the target board for U-Boot.
+1. Since we have verified this using Foundation Models, we have been using the vexpress_aemv8a as the target board for U-Boot.
 Edit ```./include/configs/vexpress_aemv8a.h``` file, add macros as below:
 ```
     #define CONFIG_OF_CONTROL
@@ -143,30 +150,29 @@ Edit ```./include/configs/vexpress_aemv8a.h``` file, add macros as below:
     #define CONFIG_FIT
     #define CONFIG_OF_SEPARATE
 ```
-Recompile again. It might happen that it will fail compiling due to lack of a gpio.h file. The reason for this is because of U-Boot's dependency design.
-We need to add a empty gpio.h file to the path ```./arch/arm/include/asm/arch-armv8```, just like other boards, do like this:
+Recompile again. It might happen that it will fail compiling due to lack of a gpio.h file. The reason for this is because of U-Boot's dependency design. We need to add a empty gpio.h file to the path ```./arch/arm/include/asm/arch-armv8```, just like for other boards, do like this:
 ```
 mkdir -p ./arch/arm/include/asm/arch-armv8
 touch ./arch/arm/include/asm/arch-armv8/gpio.h
 ```
 
-+ Generate RSA Key pairs with OpenSSL
+2. Generate RSA Key pairs with OpenSSL
 ```
-    key_dir=/path/to/your/keys/"
-    key_name="dev"  
+    export key_dir=/path/to/your/keys/"
+    export key_name="dev"  
 ```
-Generate the private signing key as:  
+3. Generate the private signing key as:  
 ```
     $ openssl genrsa -F4 -out "${key_dir}"/"${key_name}".key 2048  
 ```
-Generate the certificate containing the public key as:
+4. Generate the certificate containing the public key as:
 ```
     $ openssl req -batch -new -x509 -key "${key_dir}"/"${key_name}".key \
        -out "${key_dir}"/"${key_name}".crt  
 ```
 
-+ Edit FIT descriptor file.
-Verified boot is based on new U-Boot image format FIT, so we need to create a device tree file that describes the information about images, including kernel image, FDT blob and the RAMDISK. A FIT file could look like below
+5. Create the FIT file.
+Verified boot is based on the new U-Boot image format called FIT, so we need to create a device tree file (called images source, *.its) that describes the information about the images in use, like the kernel image, FDT blob and the RAM-disk. An its-file could look like below
 ```
 {
 　　description = "Verified boot";
@@ -227,7 +233,8 @@ Verified boot is based on new U-Boot image format FIT, so we need to create a de
 Pay attention to section ```key-name-hint```, this points to the path of key  generated in our steps using OpenSSL above. Before we build the FIT image the kernel image, FDT blob and the ramdisk must be prepared. How to configure depends on the board you plan to use. You need to select load- and entry-address for each sub image. Build the FIT image and sign the DTB file for U-Boot as below:
 ```
     $ cp fvp-psci-gicv2.dtb atf_psci_public.dtb  
-    $ mkimage -D "-I dts -O dtb -p 2000" -f kernel.its -k <path_to_key> -K atf_psci_public.dtb -r image.fit  
+    $ mkimage -D "-I dts -O dtb -p 2000" -f kernel.its \
+        -k <path_to_key> -K atf_psci_public.dtb -r image.fit  
 ```
 I selected fvp-psci-gicv2.dtb that located in firmware's dts directory to be signed with public key.  
 
