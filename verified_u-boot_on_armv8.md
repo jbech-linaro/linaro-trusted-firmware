@@ -16,23 +16,25 @@ As hosting enviroment this has been tested using:
 * Linux Mint 17
 
 ### FVP (Foundation_v8p)
-This is the simulator used in this setup. It can be downloaded from 
-[ARMs](http://www.arm.com/zh/products/tools/models/fast-models/foundation-model.php) site.
+This is the simulator used in this setup. It can be downloaded from
+[ARMs](http://www.arm.com/zh/products/tools/models/fast-models/foundation-model.php)
+site.
 
 ### Toolchain
-We recommend that you follow the
-[ARM Trusted Firmware User
+We recommend that you follow the [ARM Trusted Firmware User
 Guide](https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/user-guide.md#3--tools)
- (section: Tools) to get and setup the correct toolchain.
+(section: Tools) to get and setup the correct toolchain.
 
 ### OpenSSL
-U-Boot will need development libraries when compiling with verification enabled. On a Ubuntu based system you will get this package by typing:
+U-Boot will need development libraries when compiling with verification enabled.
+On a Ubuntu based system you will get this package by typing:
 ```
 sudo apt-get install libssl-dev
 ```
 
 ### Device Tree Compiler
-When enabling verified boot you are going to build device tree files, therefore you also must install the device tree compiler.
+When enabling verified boot you are going to build device tree files, therefore
+you also must install the device tree compiler.
 ```
 sudo apt-get install device-tree-compiler
 ```
@@ -43,45 +45,83 @@ Obtain the latest version of ARM Trusted Firmware by issue:
 ```
 git clone https://github.com/ARM-software/arm-trusted-firmware.git
 ```
+Commit used when testing this:
+
+* ```e73f4ef6072096584f44cb0046c78194df359e8a Merge pull request #219 from
+jcastillo-arm/jc/tf-issues/253 ```
 
 ### RAM-disk / initrd
-Obtain the RAM-disk by following the [ARM Trusted Firmware User Guide](https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/user-guide.md#prepare-ram-disk) (section: Prepare RAM-disk).
+Obtain the RAM-disk by following the [ARM Trusted Firmware User
+Guide](https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/user-guide.md#prepare-ram-disk)
+(section: Prepare RAM-disk).
 
 ### Linux kernel
 Obtain the Linux kernel by following the [ARM Trusted Firmware User
-Guide](https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/user-guide.md#obtaining-a-linux-kernel) (the first section called 1. Clone Linux:).
+Guide](https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/user-guide.md#obtaining-a-linux-kernel)
+(the first section called 1. Clone Linux:).
+Commit used when testing this:
+
+* ```b07e2d35062c1005d8a733851d4bc44bb6b790cc arm64: defconfig: disable unstable
+features```
 
 ### U-Boot
-The latest version of U-Boot can be downloaded from [U-Boots](http://www.denx.de/wiki/U-Boot/SourceCode) site, or by cloning it from here:
+The latest version of U-Boot can be downloaded from
+[U-Boots](http://www.denx.de/wiki/U-Boot/SourceCode) site, or by cloning it from
+here:
 ```
 git clone git://git.denx.de/u-boot.git
 ```
+Commit used when testing this:
+
+* ```0d485b9095328cdc81b2ee94ff59b988c69b9127 Merge branch 'master' of
+git://git.denx.de/u-boot-sunxi```
+
 # 3. Prepare the software
 ### Build U-boot
-Since we will run this using FVP we must configue U-Boot for the target board that is vexpress_aemv8a. Compile U-Boot as below.
+Before building U-Boot you need to make a couple of changes in the file
+```.include/configs/vexpress_aemv8a.h``` since we must use GIC2 for the kernel
+and we also must use the correct base address for U-Boot, therefore change
+accordingly:
+```
+ #ifndef CONFIG_BASE_FVP
+ /* Base FVP not using GICv3 yet */
+-#define CONFIG_GICV3
++#define CONFIG_GICV2
+ #endif
+```
+and later down in the same file
+```
+ #ifdef CONFIG_BASE_FVP
+ /* ATF loads u-boot here for BASE_FVP model */
+ #define CONFIG_SYS_TEXT_BASE           0x88000000
+ #define CONFIG_SYS_INIT_SP_ADDR         (CONFIG_SYS_SDRAM_BASE + 0x03f00000)
+ #else
+-#define CONFIG_SYS_TEXT_BASE           0x80000000
++#define CONFIG_SYS_TEXT_BASE           0x88000000
+ #define CONFIG_SYS_INIT_SP_ADDR         (CONFIG_SYS_SDRAM_BASE + 0x7fff0)
+ #endif
+```
 
-FIXME: Needed? -> ```vexpress_aemv8a_semi_config``` can be selected when you run on FVP platform. Modify the macro ```CONFIG_SYS_TEXT_BASE``` which is located in the file ```./include/configs/vexpress_aemv8a.h```. BL31 will jump to address ```0x88000000```, ```CONFIG_SYS_TEXT_BASE``` should be modified to this value.
-
+Then build U-Boot.
 ```
     $ cd u-boot
     $ export CROSS_COMPILE=<toolchain_path>/bin/aarch64-none-elf-
-    $ make distclean
-    
-    $ make vexpress_aemv8a_semi_defconfig
-    $ make all
+    $ make ARCH=aarch64 vexpress_aemv8a_defconfig
+    $ make ARCH=aarch64 all -j8
 ```
 
 ### Build Linux kernel and create uImage
-If you haven't build the kernel for ARCH64, the please do as follows:
+If you haven't build the kernel for ARCH64, then please do as follows:
 ```
     $ export CROSS_COMPILE=<toolchain_path>/bin/aarch64-none-elf-
     $ cd <linux_kernel_path>
     $ make mrproper
     $ make ARCH=arm64 defconfig
-    $ make -j6 ARCH=arm64
+    $ make -j8 ARCH=arm64
 ```
 
-When the kernel image has been created we need to create images for use with the U-Boot boot loader, this is achieved by:
+When the kernel image has been created we need to create images for use with the
+U-Boot boot loader, this is achieved by:
 ```
     $ cd <linux_kernel_path>/arch/arm64/boot
     $ <u-boot_path>/tools/mkimage -A arm64 -O linux -T kernel \
@@ -89,10 +129,13 @@ When the kernel image has been created we need to create images for use with the
         -d Image uImage
 ```
     
-Both load address and link address will and should be ```0x80080000```. The -n parameter could be any name, for simplicity we use the same name as for the version of the kernel we are using.
+Both load address and link address will and should be ```0x80080000```. The -n
+parameter could be any name, for simplicity we use the same name as for the
+version of the kernel we are using.
 
 ### Make the firmware image package (fip)
-Next step is to build the firmware package in ARM-Trusted-Firmware Git. We need to build:
+Next step is to build the firmware package in ARM-Trusted-Firmware Git. We need
+to build:
 
 * bl1.bin
 * bl2.bin
@@ -104,7 +147,7 @@ This could be achieved by typing following
     $ export BL33=<u-boot_path>/u-boot.bin  
     $ export CROSS_COMPILE=<toolchain_path>/bin/aarch64-none-elf-
     $ cd <arm_tf_path>
-    $ make PLAT=fvp all fip
+    $ make -j8 PLAT=fvp all fip
 ```
 
 ### 4. Run the system in FVP
@@ -130,16 +173,18 @@ $ /<fvp_path>/models/Linux64_GCC-4.1/Foundation_v8 \
         --data=bl1.bin@0x0 \
         --data=fip.bin@0x8000000 \
         --data=uImage@0x90000000 \
-        --data=filesystem.cpio.gz@0xa1000000 \
-        --data=fdt.dtb@0xa0000000
+        --data=fdt.dtb@0xa0000000 \
+        --data=filesystem.cpio.gz@0xa1000000
 ```
-PS: --data command can be used to load the image into FVP's memory
-Next, boot the kernel and once the firmware has successfully been started, the system will stop at U-Boot's shell.
-+ We can use U-boots ```bootm``` command to start Linux kernel as below:
+Use U-boots ```bootm``` command to start the Linux kernel:
+
 ```
     $ bootm 0x90000000 0xa1000000:size 0xa0000000
 ```
-```0x90000000``` is the kernel's address and ```0xa0000000``` is device tree DTB address. ```0xa1000000``` is the ramdisk's address, also as a final step we need to provide the size for the ramdisk.
+This maps to:
+```
+bootm ${kernel_addr} ${ramdisk_addr} ${fdt_addr}
+```
 
 # 5. Verified U-Boot
 1. Since we have verified this using Foundation Models, we have been using the vexpress_aemv8a as the target board for U-Boot.
