@@ -67,8 +67,7 @@ FIXME: Needed? -> ```vexpress_aemv8a_semi_config``` can be selected when you run
     $ export CROSS_COMPILE=<toolchain_path>/bin/aarch64-none-elf-
     $ make distclean
     
-    # In the latest version you should use vexpress_aemv8a_defconfig
-    $ make vexpress_aemv8a_config
+    $ make vexpress_aemv8a_semi_defconfig
     $ make all
 ```
 
@@ -174,7 +173,7 @@ touch ./arch/arm/include/asm/arch-armv8/gpio.h
 ```
 
 5. Create the FIT file.
-Verified boot is based on the new U-Boot image format called FIT, so we need to create a device tree file (called images source, *.its) that describes the information about the images in use, like the kernel image, FDT blob and the RAM-disk. An its-file could look like below
+Verified boot is based on the new U-Boot image format called FIT (Flattened uImage Tree), so we need to create a image tree source file (*.its) that describes the images in use, like the kernel image, FDT blob and the RAM-disk. An its source file could look like below
 ```
 {
 　　description = "Verified boot";
