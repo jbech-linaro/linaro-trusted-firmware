@@ -106,8 +106,8 @@ Then build U-Boot.
 ```
     $ cd u-boot
     $ export CROSS_COMPILE=<toolchain_path>/bin/aarch64-none-elf-
-    $ make ARCH=aarch64 vexpress_aemv8a_defconfig
-    $ make ARCH=aarch64 all -j8
+    $ make vexpress_aemv8a_defconfig
+    $ make all -j8
 ```
 
 ### Build Linux kernel and create uImage
