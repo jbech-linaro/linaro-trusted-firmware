@@ -8,13 +8,14 @@ Contents:
 4. Run the system in FVP
 5. Verified U-Boot
     1. Overview
-    2. Edit U-Boot’s board header file
+    2. Edit U-Boot's board header file
     3. Obtain suitable images
     4. Generate RSA Key pairs with OpenSSL
     5. Create the Image Tree Source file
     6. Sign the kernel
     7. Build U-Boot FDT and put the public key into U-Boot's image
     8. Run the FIT image as below
+
 
 # 1. Prerequisites
 ### Desktop
@@ -89,16 +90,16 @@ In this setup we have had the following folder structure, so please refer to
 this when reading about symlinks, its-files etc.
 ```
 $HOME/devel
-        ├── arm-trusted-firmware
-        ├── Foundation_v8pkg
-        ├── linux
-        └── u-boot
+        |-- arm-trusted-firmware
+        |-- Foundation_v8pkg
+        |-- linux
+        |-- u-boot
 ```
 
 # 3. Prepare the software
 ### Build U-boot
 Before building U-Boot you need to make a couple of changes in the file
-```.include/configs/vexpress_aemv8a.h``` since we must use GIC2 for the kernel
+`.include/configs/vexpress_aemv8a.h` since we must use GIC2 for the kernel
 and we also must use the correct base address for U-Boot, therefore change
 accordingly:
 ```
@@ -161,7 +162,7 @@ U-Boot boot loader, this is achieved by:
         -d Image uImage
 ```
 
-Both load address and link address will and should be ```0x80080000```. The -n
+Both load address and link address will and should be `0x80080000`. The -n
 parameter could be any name, for simplicity we use the same name as for the
 version of the kernel we are using.
 
@@ -182,7 +183,7 @@ This could be achieved by typing following
     $ make -j8 PLAT=fvp all fip
 ```
 
-### 4. Run the system in FVP
+# 4. Run the system in FVP
 Start by creating symlinks to all of the images to the FVP directoy.
 ```
     $ cd <fvp_path>
@@ -205,7 +206,7 @@ $ /<fvp_path>/models/Linux64_GCC-4.1/Foundation_v8 \
         --data=uImage@0x90000000 \
         --data=fdt.dtb@0xa0000000
 ```
-Use U-boots ```bootm``` command to start the Linux kernel:
+Use U-boots `bootm` command to start the Linux kernel:
 
 ```
     $ bootm 0x90000000 - 0xa0000000
@@ -268,7 +269,7 @@ located in `$uboot/doc/uImage.FIT/ beaglebone_vboot.txt`.
 ### 5.2. Edit U-Boot’s board header file, with the verified boot options enabled
 Since we have verified this using Foundation Models, we have been using the
 vexpress_aemv8a as the target board for U-Boot. Edit
-```./include/configs/vexpress_aemv8a.h``` file, add macros as below:
+`./include/configs/vexpress_aemv8a.h` file, add macros as below:
 ```
     #define CONFIG_OF_CONTROL
     #define CONFIG_RSA
@@ -279,7 +280,7 @@ vexpress_aemv8a as the target board for U-Boot. Edit
 
 It will fail compiling due to lack of a gpio.h file. The reason for this is
 because of U-Boot's dependency design. We need to add a empty gpio.h file to the
-path ```./arch/arm/include/asm/arch-armv8```, just like for other boards, do
+path `./arch/arm/include/asm/arch-armv8`, just like for other boards, do
 like this:
 ```
 mkdir -p ./arch/arm/include/asm/arch-armv8
@@ -393,7 +394,7 @@ based on official’s example: `$uboot/doc/uImage.FIT /sign-configs.its`
 };
 ```
 
-Pay attention to section ```key-name-hint```, this points to the path of key
+Pay attention to section `key-name-hint`, this points to the path of key
 generated in our steps using OpenSSL above. Before we build the FIT image the
 kernel image, FDT blob and the ramdisk must be prepared. How to configure
 depends on the board you plan to use. You need to select load- and entry-address
@@ -424,13 +425,13 @@ $ make vexpress_aemb8a_config
 $ make CROSS_COMPILE=<> DEVICE_TREE=foundation all
 $ make CROSS_COMPILE=<> EXT_DTB=<dtb file>
 ```
-Note that, we copied the device tree file ```foundation.dts``` to U-Boot's
-```arch/arm/dts``` file and made the corresponding modifications to the Makefile
+Note that, we copied the device tree file `foundation.dts` to U-Boot's
+`arch/arm/dts` file and made the corresponding modifications to the Makefile
 (add  `dtb-$(CONFIG_ARM64) += foundation.dtb`). This is the object that
-```DEVICE_TREE``` points to. ```EXT_DTB``` is the DTB file that we signed before
-in make FIT image step: ```u-boot.dtb```. After this step was completed, public
+`DEVICE_TREE` points to. `EXT_DTB` is the DTB file that we signed before
+in make FIT image step: `u-boot.dtb`. After this step was completed, public
 key is found in the device tree. U-Boot can use this to verify the image that
-was signed with the private key. ```u-boot-dtb.bin``` is the file that we need.
+was signed with the private key. `u-boot-dtb.bin` is the file that we need.
 Next build ARM-TF and point BL33 to u-boot-dtb.bin.
 
 ### 5.8 Run the FIT image as below
@@ -448,8 +449,8 @@ $ /<path_to_fvp>/Foundation_v8 \
 Note: There exist an alignment problem in U-Boot's mkimage, we have debugged the
 source code and found that sometimes you may encounter this problem. If you
 encounter this problem you could try to modify the address that FIT image be
-loaded. I.e, load ```image.fit``` to ```0xa2000004``` and it should be OK,
-however, when we load it to ```0xA0000000``` there will be a abortion exception.
+loaded. I.e, load `image.fit` to `0xa2000004` and it should be OK,
+however, when we load it to `0xA0000000` there will be a abortion exception.
 This problem is mainly related to mkimage tools and FIT format image parsing
 routines.
 
@@ -458,9 +459,9 @@ After loaded images are verified, Use bootm command to boot kernel as:
     $ bootm 0xA0000004
 ```
 PS: There are some problems in he latest version of U-Boot (v2014.10). You may
-need to rollback ```gic_v64.S``` file as the older version when you open
-```CONFIG_GICV2``` macro. Although we have reported the problem to U-Boot's
+need to rollback `gic_v64.S` file as the older version when you open
+`CONFIG_GICV2` macro. Although we have reported the problem to U-Boot's
 maintainer, we still recommend you to use the older version of U-Boot if you
 want to verify this using Foundation Model. As an alternative you could
-substitute the file ```gic_v64.S``` with the older version and add the
-```#define CONFIG_GICV2``` macro in ```./include/configs/vexpress_aemv8a.h```.
+substitute the file `gic_v64.S` with the older version and add the
+`#define CONFIG_GICV2` macro in `./include/configs/vexpress_aemv8a.h`.

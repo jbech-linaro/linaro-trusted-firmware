@@ -1,0 +1,302 @@
+<h2 id="how-to-run-arm-trusted-firmware-and-u-boot-with-verification-enabled">How to run ARM-Trusted-Firmware and U-Boot with verification enabled</h2>
+<p>Contents:</p>
+<ol style="list-style-type: decimal">
+	<li>Prerequisites</li>
+	<li>Obtain the software</li>
+	<li>Prepare the software</li>
+	<li>Run the system in FVP</li>
+	<li>Verified U-Boot
+	<ol style="list-style-type: decimal">
+		<li>Overview</li>
+		<li>Edit U-Boot's board header file</li>
+		<li>Obtain suitable images</li>
+		<li>Generate RSA Key pairs with OpenSSL</li>
+		<li>Create the Image Tree Source file</li>
+		<li>Sign the kernel</li>
+		<li>Build U-Boot FDT and put the public key into U-Boot's image</li>
+		<li>Run the FIT image as below</li>
+	</ol></li>
+</ol>
+<h1 id="prerequisites">1. Prerequisites</h1>
+<h3 id="desktop">Desktop</h3>
+<p>As hosting enviroment this has been tested using:</p>
+<ul>
+	<li>Ubuntu 12.04.04</li>
+	<li>Linux Mint 17</li>
+</ul>
+<h3 id="fvp-foundation_v8p">FVP (Foundation_v8p)</h3>
+<p>This is the simulator used in this setup. It can be downloaded from <a href="http://www.arm.com/zh/products/tools/models/fast-models/foundation-model.php">ARMs</a> site.</p>
+<h3 id="toolchain">Toolchain</h3>
+<p>We recommend that you follow the <a href="https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/user-guide.md#3--tools">ARM Trusted Firmware User Guide</a> (section: Tools) to get and setup the correct toolchain.</p>
+<h3 id="openssl">OpenSSL</h3>
+<p>U-Boot will need development libraries when compiling with verification enabled. On a Ubuntu based system you will get this package by typing:</p>
+<pre><code>sudo apt-get install libssl-dev</code></pre>
+<h3 id="device-tree-compiler">Device Tree Compiler</h3>
+<p>When enabling verified boot you are going to build device tree files, therefore you also must install the device tree compiler.</p>
+<pre><code>sudo apt-get install device-tree-compiler</code></pre>
+<h1 id="obtain-the-software">2. Obtain the software</h1>
+<h3 id="arm-trusted-firmware">ARM Trusted Firmware</h3>
+<p>Obtain the latest version of ARM Trusted Firmware by issue:</p>
+<pre><code>git clone https://github.com/ARM-software/arm-trusted-firmware.git</code></pre>
+<p>Commit used when testing this:</p>
+<ul>
+	<li><code>e73f4ef6072096584f44cb0046c78194df359e8a Merge pull request #219 from jcastillo-arm/jc/tf-issues/253</code></li>
+</ul>
+<h3 id="ram-disk">RAM-disk</h3>
+<p>Obtain the RAM-disk by following the <a href="https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/user-guide.md#prepare-ram-disk">ARM Trusted Firmware User Guide</a> (section: Prepare RAM-disk).</p>
+<h3 id="linux-kernel">Linux kernel</h3>
+<p>Obtain the Linux kernel by following the <a href="https://github.com/ARM-software/arm-trusted-firmware/blob/master/docs/user-guide.md#obtaining-a-linux-kernel">ARM Trusted Firmware User Guide</a> (the first section called 1. Clone Linux:). Commit used when testing this:</p>
+<ul>
+	<li><code>b07e2d35062c1005d8a733851d4bc44bb6b790cc arm64: defconfig: disable unstable features</code></li>
+</ul>
+<h3 id="u-boot">U-Boot</h3>
+<p>The latest version of U-Boot can be downloaded from <a href="http://www.denx.de/wiki/U-Boot/SourceCode">U-Boots</a> site, or by cloning it from here:</p>
+<pre><code>git clone git://git.denx.de/u-boot.git</code></pre>
+<p>Commit used when testing this:</p>
+<ul>
+	<li><code>0d485b9095328cdc81b2ee94ff59b988c69b9127 Merge branch 'master' of git://git.denx.de/u-boot-sunxi</code></li>
+</ul>
+<h3 id="tree-structure">Tree structure</h3>
+<p>In this setup we have had the following folder structure, so please refer to this when reading about symlinks, its-files etc.</p>
+<pre><code>$HOME/devel
+	|-- arm-trusted-firmware
+	|-- Foundation_v8pkg
+	|-- linux
+	|-- u-boot</code></pre>
+<h1 id="prepare-the-software">3. Prepare the software</h1>
+<h3 id="build-u-boot">Build U-boot</h3>
+<p>Before building U-Boot you need to make a couple of changes in the file <b>.include/configs/vexpress_aemv8a.h</b> since we must use GIC2 for the kernel and we also must use the correct base address for U-Boot, therefore change accordingly:</p>
+<pre><code> #ifndef CONFIG_BASE_FVP
+ /* Base FVP not using GICv3 yet */
+-#define CONFIG_GICV3
++#define CONFIG_GICV2
+ #endif</code></pre>
+<p>and later down in the same file</p>
+<pre><code> #ifdef CONFIG_BASE_FVP
+ /* ATF loads u-boot here for BASE_FVP model */
+ #define CONFIG_SYS_TEXT_BASE           0x88000000
+ #define CONFIG_SYS_INIT_SP_ADDR         (CONFIG_SYS_SDRAM_BASE + 0x03f00000)
+ #else
+-#define CONFIG_SYS_TEXT_BASE           0x80000000
++#define CONFIG_SYS_TEXT_BASE           0x88000000
+ #define CONFIG_SYS_INIT_SP_ADDR         (CONFIG_SYS_SDRAM_BASE + 0x7fff0)
+ #endif</code></pre>
+<p>Then build U-Boot.</p>
+<pre><code>    $ cd u-boot
+    $ export CROSS_COMPILE=&lt;toolchain_path&gt;/bin/aarch64-none-elf-
+    $ make vexpress_aemv8a_defconfig
+    $ make all -j8</code></pre>
+<h3 id="build-linux-kernel-and-create-uimage">Build Linux kernel and create uImage</h3>
+<p>If you haven't build the kernel for ARCH64, then please do as follows:</p>
+<pre><code>    $ export CROSS_COMPILE=&lt;toolchain_path&gt;/bin/aarch64-none-elf-
+    $ cd &lt;linux_kernel_path&gt;
+    $ make mrproper
+    $ make ARCH=arm64 defconfig</code></pre>
+<p>Next you need to point to the root fs using the INITRAMFS_SOURCE flag in kernel. Point to the file filesystem.cpio.gz.</p>
+<pre><code>    $ make ARCH=arm64 menuconfig
+      ...
+       |   Location:
+       |     -&gt; General setup
+       |       -&gt; Initial RAM filesystem and RAM disk (initramfs/initrd) support</code></pre>
+<p>Final step is to compile</p>
+<pre><code>    $ make ARCH=arm64 -j8</code></pre>
+<p>When the kernel image has been created we need to create images for use with the U-Boot boot loader, this is achieved by:</p>
+<pre><code>    $ cd &lt;linux_kernel_path&gt;/arch/arm64/boot
+    $ &lt;u-boot_path&gt;/tools/mkimage -A arm64 -O linux -T kernel \
+	-C none -a 0x80080000 -e 0x80080000  -n &#39;linux-3.15&#39; \
+	-d Image uImage</code></pre>
+<p>Both load address and link address will and should be <b>0x80080000</b>. The -n parameter could be any name, for simplicity we use the same name as for the version of the kernel we are using.</p>
+<h3 id="make-the-firmware-image-package-fip">Make the firmware image package (fip)</h3>
+<p>Next step is to build the firmware package in ARM-Trusted-Firmware Git. We need to build:</p>
+<ul>
+	<li>bl1.bin</li>
+	<li>bl2.bin</li>
+	<li>bl31.bin</li>
+	<li>bl33.bin (which in this case should be/is u-boot.bin)</li>
+</ul>
+<p>This could be achieved by typing following</p>
+<pre><code>    $ export BL33=&lt;u-boot_path&gt;/u-boot.bin
+    $ export CROSS_COMPILE=&lt;toolchain_path&gt;/bin/aarch64-none-elf-
+    $ cd &lt;arm_tf_path&gt;
+    $ make -j8 PLAT=fvp all fip</code></pre>
+<h1 id="run-the-system-in-fvp">4. Run the system in FVP</h1>
+<p>Start by creating symlinks to all of the images to the FVP directoy.</p>
+<pre><code>    $ cd &lt;fvp_path&gt;
+    $ ln -s &lt;arm_tf_path&gt;/build/fvp/release/bl1.bin .
+    $ ln -s &lt;arm_tf_path&gt;/build/fvp/release/fip.bin .
+    $ ln -s &lt;arm_tf_path&gt;/fdts/fvp-foundation-gicv2-psci.dtb fdt.dtb
+    $ ln -s &lt;u-boot_path&gt;/u-boot.bin .
+    $ ln -s &lt;linux_kernel_path&gt;/arch/arm64/boot/uImage .</code></pre>
+<p>Starting Foundation as below:</p>
+<pre><code>$ /&lt;fvp_path&gt;/models/Linux64_GCC-4.1/Foundation_v8 \
+	--cores=4 \
+	--no-secure-memory \
+	--visualization \
+	--gicv3 \
+	--data=bl1.bin@0x0 \
+	--data=fip.bin@0x8000000 \
+	--data=uImage@0x90000000 \
+	--data=fdt.dtb@0xa0000000</code></pre>
+<p>Use U-boots <b>bootm</b> command to start the Linux kernel:</p>
+<pre><code>    $ bootm 0x90000000 - 0xa0000000</code></pre>
+<p>This maps to:</p>
+<pre><code>bootm ${kernel_addr} ${ramdisk_addr} ${fdt_addr}</code></pre>
+<h1 id="verified-u-boot">5. Verified U-Boot</h1>
+<h3 id="overview">5.1. Overview</h3>
+<p>U-Boot’s verified boot was based on RSA signature. It uses cryptographic algorithms to 'sign' software images. Images are signed using a private key known only to the signer, but can be verified using a public key. The private and public keys are mathematically related. The process looks like this:</p>
+<pre><code>      Signing                                      Verification
+      =======                                      ============
+
+ +--------------+                   *
+ | RSA key pair |                   *             +---------------+
+ | .key  .crt   |                   *             | Public key in |
+ +--------------+       +------&gt; public key -----&gt;| trusted place |
+       |                |           *             +---------------+
+       |                |           *                    |
+       v                |           *                    v
+   +---------+          |           *              +--------------+
+   |         |----------+           *              |              |
+   | signer  |                      *              |    U-Boot    |
+   |         |----------+           *              |  signature   |--&gt; yes/no
+   +---------+          |           *              | verification |
+      ^                 |           *              |              |
+      |                 |           *              +--------------+
+      |                 |           *                    ^
+ +----------+           |           *                    |
+ | Software |           +----&gt; signed image -------------+
+ |  image   |
+ +----------+</code></pre>
+<p>The FIT format is already widely used in U-Boot. It is a flattened device tree (FDT) in a particular format, with images contained within. FITs include hashes to verify images, so it is relatively straightforward to add signatures as well. The public key can be stored in U-Boot's CONFIG_OF_CONTROL device tree in a standard place. Then when a FIT it loaded it can be verified using that public key. The steps are roughly as follows:</p>
+<ol style="list-style-type: decimal">
+	<li>Edit U-Boot’s board head file, with the verified boot options enabled.</li>
+	<li>Obtain suitable images (kernel, FDT, Ram Disk etc)</li>
+	<li>Create a key pair</li>
+	<li>Create a Image Tree Source file (ITS)</li>
+	<li>Sign the kernel</li>
+	<li>Put the public key into U-Boot's image</li>
+	<li>Put U-Boot and the kernel onto the board</li>
+</ol>
+<p>Also, you can follow U-boot’s official guide to setup verified boot, which is located in <b>$uboot/doc/uImage.FIT/ beaglebone_vboot.txt</b>.</p>
+<h3 id="edit-u-boots-board-header-file-with-the-verified-boot-options-enabled">5.2. Edit U-Boot’s board header file, with the verified boot options enabled</h3>
+<p>Since we have verified this using Foundation Models, we have been using the vexpress_aemv8a as the target board for U-Boot. Edit <b>./include/configs/vexpress_aemv8a.h</b> file, add macros as below:</p>
+<pre><code>    #define CONFIG_OF_CONTROL
+    #define CONFIG_RSA
+    #define CONFIG_FIT_SIGNATURE
+    #define CONFIG_FIT
+    #define CONFIG_OF_SEPARATE</code></pre>
+<p>It will fail compiling due to lack of a gpio.h file. The reason for this is because of U-Boot's dependency design. We need to add a empty gpio.h file to the path <b>./arch/arm/include/asm/arch-armv8</b>, just like for other boards, do like this:</p>
+<pre><code>mkdir -p ./arch/arm/include/asm/arch-armv8
+touch ./arch/arm/include/asm/arch-armv8/gpio.h</code></pre>
+<h3 id="obtain-suitable-images">5.3. Obtain suitable images</h3>
+<p>Reference step 1-4.</p>
+<h3 id="generate-rsa-key-pairs-with-openssl">5.4 Generate RSA Key pairs with OpenSSL</h3>
+<pre><code>    export key_dir=/path/to/your/keys/&quot;
+    export key_name=&quot;dev&quot;</code></pre>
+<h5 id="generate-the-private-signing-key-as">5.4.1 Generate the private signing key as:</h5>
+<pre><code>    $ openssl genrsa -F4 -out &quot;${key_dir}&quot;/&quot;${key_name}&quot;.key 2048</code></pre>
+<h5 id="generate-the-certificate-containing-the-public-key-as">5.4.2. Generate the certificate containing the public key as:</h5>
+<pre><code>    $ openssl req -batch -new -x509 -key &quot;${key_dir}&quot;/&quot;${key_name}&quot;.key \
+       -out &quot;${key_dir}&quot;/&quot;${key_name}&quot;.crt</code></pre>
+<h3 id="create-the-image-tree-source-file">5.5 Create the Image Tree Source file</h3>
+<p>First, We need to generate a very simple u-boot device tree file to accommodate the public key, lets call the file u-boot.dts and write the following in that file:</p>
+<pre><code>/dts-v1/;
+
+/ {
+	model = &quot;Keys&quot;;
+	compatible = &quot;linaroSwg&quot;;
+	signature {
+		key-dev {
+			required = &quot;conf&quot;;
+			algo = &quot;sha1,rsa2048&quot;;
+			key-name-hint = &quot;dev&quot;;
+		};
+	};
+};</code></pre>
+<p>Verified boot is based on the new U-Boot image format called FIT (Flattened uImage Tree), so we need to create a image tree source file (*.its) that describes the images in use, like the kernel image, FDT blob and the RAM-disk. An its source file could look like below, create it using the name fit-image.its. Alternatively, you can also create a new image tree source file based on official’s example: <b>$uboot/doc/uImage.FIT /sign-configs.its</b></p>
+<pre><code>/dts-v1/;
+
+/ {
+    description = &quot;Linux kernel&quot;;
+    #address-cells = &lt;1&gt;;
+    images {
+	kernel@1 {
+	    description = &quot;Linux kernel&quot;;
+	    data = /incbin/(&quot;../linux/arch/arm64/boot/Image&quot;);
+	    arch = &quot;arm64&quot;;
+	    os = &quot;linux&quot;;
+	    type = &quot;kernel_noload&quot;;
+	    compression = &quot;none&quot;;
+	    load = &lt;0x80080000&gt;;
+	    entry = &lt;0x80080000&gt;;
+	    kernel-version = &lt;1&gt;;
+	    hash@1 {
+		algo = &quot;sha1&quot;;
+	    };
+	};
+	fdt@1 {
+	    description = &quot;fdt blob&quot;;
+	    data = /incbin/(&quot;./arch/arm/dts/fvp-foundation-gicv2-psci.dtb&quot;);
+	    type = &quot;flat_dt&quot;;
+	    arch = &quot;arm64&quot;;
+	    compression = &quot;none&quot;;
+	    fdt-version = &lt;1&gt;;
+	    hash@1 {
+		algo = &quot;sha1&quot;;
+	    };
+	};
+	ramdisk@1 {
+	    description= &quot;ramdisk&quot;;
+	    data = /incbin/(&quot;../Foundation_v8pkg/filesystem.cpio.gz&quot;);
+	    type = &quot;ramdisk&quot;;
+	    arch = &quot;arm64&quot;;
+	    os = &quot;linux&quot;;
+	    compression = &quot;gzip&quot;;
+	    load = &lt;0xaa000000&gt;;
+	    entry = &lt;0xaa000000&gt;;
+	    hash@1 {
+		algo = &quot;sha1&quot;;
+	    };
+	};
+    };
+    configurations {
+	default = &quot;conf@1&quot;;
+	conf@1 {
+	    description = &quot;Boot Linux kernel&quot;;
+	    kernel = &quot;kernel@1&quot;;
+	    fdt = &quot;fdt@1&quot;;
+	    ramdisk = &quot;ramdisk@1&quot;;
+	    signature@1 {
+		algo = &quot;sha1, rsa2048 &quot;;
+		key-name-hint = &quot;dev&quot;;
+		sign-images = &quot;fdt&quot;, &quot;kernel&quot;, &quot;ramdisk&quot;;
+	    };
+	};
+    };
+};</code></pre>
+<p>Pay attention to section <b>key-name-hint</b>, this points to the path of key generated in our steps using OpenSSL above. Before we build the FIT image the kernel image, FDT blob and the ramdisk must be prepared. How to configure depends on the board you plan to use. You need to select load- and entry-address for each sub image.</p>
+<h3 id="sign-the-kernel">5.6. Sign the kernel</h3>
+<p>Build DTB blob file use u-boot.dts as below:</p>
+<pre><code>$ dtc -p 0x1000 u-boot.dts -O dtb -o u-boot.dtb</code></pre>
+<p>Build the FIT image and sign the DTB file for U-Boot as below:</p>
+<pre><code>$mkimage -D &quot;-I dts -O dtb -p 2000&quot; -f fit_image.its image.fit</code></pre>
+<p>Sign the kernel images and put the public key into u-boot’s image</p>
+<pre><code>mkimage -D &quot;-I dts -O dtb -p 2000&quot; -F -k key -K u-boot.dtb -r image.fit</code></pre>
+<h3 id="build-u-boot-fdt-and-put-the-public-key-into-u-boots-image">5.7 Build U-Boot FDT and put the public key into U-Boot's image</h3>
+<pre><code>$ make distclean
+$ make vexpress_aemb8a_config
+$ make CROSS_COMPILE=&lt;&gt; DEVICE_TREE=foundation all
+$ make CROSS_COMPILE=&lt;&gt; EXT_DTB=&lt;dtb file&gt;</code></pre>
+<p>Note that, we copied the device tree file <b>foundation.dts</b> to U-Boot's <b>arch/arm/dts</b> file and made the corresponding modifications to the Makefile (add <b>dtb-$(CONFIG_ARM64) += foundation.dtb</b>). This is the object that <b>DEVICE_TREE</b> points to. <b>EXT_DTB</b> is the DTB file that we signed before in make FIT image step: <b>u-boot.dtb</b>. After this step was completed, public key is found in the device tree. U-Boot can use this to verify the image that was signed with the private key. <b>u-boot-dtb.bin</b> is the file that we need. Next build ARM-TF and point BL33 to u-boot-dtb.bin.</p>
+<h3 id="run-the-fit-image-as-below">5.8 Run the FIT image as below</h3>
+<pre><code>$ /&lt;path_to_fvp&gt;/Foundation_v8 \
+	--cores=4 \
+	--no-secure-memory \
+	--visualization \
+	--gicv3 \
+	--data=bl1.bin@0x0 \
+	--data=fip.bin@0x8000000 \
+	--data=image.fit@0xa2000004</code></pre>
+<p>Note: There exist an alignment problem in U-Boot's mkimage, we have debugged the source code and found that sometimes you may encounter this problem. If you encounter this problem you could try to modify the address that FIT image be loaded. I.e, load <b>image.fit</b> to <b>0xa2000004</b> and it should be OK, however, when we load it to <b>0xA0000000</b> there will be a abortion exception. This problem is mainly related to mkimage tools and FIT format image parsing routines.</p>
+<p>After loaded images are verified, Use bootm command to boot kernel as:</p>
+<pre><code>    $ bootm 0xA0000004</code></pre>
+<p>PS: There are some problems in he latest version of U-Boot (v2014.10). You may need to rollback <b>gic_v64.S</b> file as the older version when you open <b>CONFIG_GICV2</b> macro. Although we have reported the problem to U-Boot's maintainer, we still recommend you to use the older version of U-Boot if you want to verify this using Foundation Model. As an alternative you could substitute the file <b>gic_v64.S</b> with the older version and add the <b>#define CONFIG_GICV2</b> macro in <b>./include/configs/vexpress_aemv8a.h</b>.</p>
